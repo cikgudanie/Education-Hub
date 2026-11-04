@@ -1,0 +1,18 @@
+{
+  "name": "education-hub",
+  "version": "1.0.0",
+  "description": "Sistem penghantaran laporan pelajar dengan simpanan database SQLite",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=22.13"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.21.2",
+    "multer": "^2.0.2"
+  }
+}
