@@ -60,6 +60,54 @@ db.exec(`
     submitted_at  TEXT    NOT NULL DEFAULT (datetime('now', 'localtime'))
   );
   CREATE INDEX IF NOT EXISTS idx_reports_class ON reports(class_name);
+
+  -- Pelan strategi bulanan (ikut "Strategic Trading Implementation").
+  CREATE TABLE IF NOT EXISTS plans (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_ref        INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    month              TEXT    NOT NULL,              -- 'YYYY-MM'
+    capital            REAL    NOT NULL,
+    usd_per_pip        REAL    NOT NULL,
+    lot_size           REAL    NOT NULL,
+    base_pct           REAL    NOT NULL,              -- pecahan, cth 0.05 = 5%
+    risk_pct           REAL,                          -- risiko setiap trade
+    risk_tolerance_pct REAL,                          -- had kerugian bulanan
+    updated_at         TEXT    NOT NULL DEFAULT (datetime('now', 'localtime')),
+    UNIQUE (student_ref, month)
+  );
+
+  -- Rekod harian (ikut "RMI Template").
+  CREATE TABLE IF NOT EXISTS daily_records (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_ref    INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    record_date    TEXT    NOT NULL,                  -- 'YYYY-MM-DD'
+    setup          TEXT,
+    lot_size       REAL,
+    total_trades   INTEGER NOT NULL DEFAULT 0,
+    wins           INTEGER NOT NULL DEFAULT 0,
+    losses         INTEGER NOT NULL DEFAULT 0,
+    profit         REAL    NOT NULL DEFAULT 0,        -- jumlah untung (positif)
+    loss           REAL    NOT NULL DEFAULT 0,        -- jumlah rugi (disimpan positif)
+    notes          TEXT,
+    mentor_comment TEXT,
+    created_at     TEXT    NOT NULL DEFAULT (datetime('now', 'localtime')),
+    updated_at     TEXT    NOT NULL DEFAULT (datetime('now', 'localtime')),
+    UNIQUE (student_ref, record_date)
+  );
+
+  CREATE TABLE IF NOT EXISTS record_images (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    record_id  INTEGER NOT NULL REFERENCES daily_records(id) ON DELETE CASCADE,
+    data       BLOB    NOT NULL,
+    type       TEXT    NOT NULL,
+    created_at TEXT    NOT NULL DEFAULT (datetime('now', 'localtime'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_record_images ON record_images(record_id);
+
+  CREATE TABLE IF NOT EXISTS settings (
+    key   TEXT PRIMARY KEY,
+    value TEXT
+  );
 `);
 
 // ---------- Pelajar ----------
@@ -237,7 +285,138 @@ const listReportsByStudentId = (sid) =>
        FROM reports WHERE student_id = ? COLLATE NOCASE ORDER BY submitted_at DESC, id DESC`
   ).all(sid);
 
+// ---------- Pelan bulanan ----------
+const PLAN_FIELDS = ['capital', 'usd_per_pip', 'lot_size', 'base_pct', 'risk_pct', 'risk_tolerance_pct'];
+
+const getPlan = (studentRef, month) =>
+  db.prepare('SELECT * FROM plans WHERE student_ref = ? AND month = ?').get(studentRef, month);
+
+// Pelan terkini sebelum bulan ini (untuk isian lalai bulan baru).
+const getPreviousPlan = (studentRef, month) =>
+  db.prepare('SELECT * FROM plans WHERE student_ref = ? AND month < ? ORDER BY month DESC LIMIT 1').get(studentRef, month);
+
+function savePlan(studentRef, month, p) {
+  db.prepare(
+    `INSERT INTO plans (student_ref, month, ${PLAN_FIELDS.join(', ')})
+     VALUES (?, ?, ${PLAN_FIELDS.map(() => '?').join(', ')})
+     ON CONFLICT (student_ref, month) DO UPDATE SET
+       ${PLAN_FIELDS.map((f) => `${f} = excluded.${f}`).join(', ')}, updated_at = datetime('now', 'localtime')`
+  ).run(studentRef, month, ...PLAN_FIELDS.map((f) => p[f]));
+}
+
+// ---------- Rekod harian ----------
+const DAILY_FIELDS = ['record_date', 'setup', 'lot_size', 'total_trades', 'wins', 'losses', 'profit', 'loss', 'notes'];
+const DAILY_COLS = `r.id, r.student_ref, ${DAILY_FIELDS.map((f) => 'r.' + f).join(', ')}, r.mentor_comment, r.created_at, r.updated_at,
+  (SELECT COUNT(*) FROM record_images i WHERE i.record_id = r.id) AS image_count`;
+
+function createDaily(studentRef, d) {
+  const r = db
+    .prepare(`INSERT INTO daily_records (student_ref, ${DAILY_FIELDS.join(', ')}) VALUES (?, ${DAILY_FIELDS.map(() => '?').join(', ')})`)
+    .run(studentRef, ...DAILY_FIELDS.map((f) => d[f]));
+  return Number(r.lastInsertRowid);
+}
+
+function updateDaily(id, studentRef, d) {
+  db.prepare(
+    `UPDATE daily_records SET ${DAILY_FIELDS.map((f) => `${f} = ?`).join(', ')}, updated_at = datetime('now', 'localtime')
+      WHERE id = ? AND student_ref = ?`
+  ).run(...DAILY_FIELDS.map((f) => d[f]), id, studentRef);
+}
+
+const getDaily = (id) =>
+  db.prepare(
+    `SELECT ${DAILY_COLS}, s.student_id, s.name AS student_name, s.class_name
+       FROM daily_records r JOIN students s ON s.id = r.student_ref WHERE r.id = ?`
+  ).get(id);
+
+const getDailyByDate = (studentRef, date) =>
+  db.prepare('SELECT id FROM daily_records WHERE student_ref = ? AND record_date = ?').get(studentRef, date);
+
+const listDailyForMonth = (studentRef, month) =>
+  db.prepare(`SELECT ${DAILY_COLS} FROM daily_records r WHERE r.student_ref = ? AND r.record_date LIKE ? ORDER BY r.record_date`)
+    .all(studentRef, `${month}-%`);
+
+const listDailyAll = (studentRef) =>
+  db.prepare(`SELECT ${DAILY_COLS} FROM daily_records r WHERE r.student_ref = ? ORDER BY r.record_date`).all(studentRef);
+
+const listRecordMonths = (studentRef) =>
+  db.prepare(
+    `SELECT month FROM plans WHERE student_ref = ?
+     UNION SELECT substr(record_date, 1, 7) FROM daily_records WHERE student_ref = ?
+     ORDER BY 1 DESC`
+  ).all(studentRef, studentRef).map((r) => r.month);
+
+function deleteDaily(id, studentRef) {
+  db.prepare('DELETE FROM daily_records WHERE id = ? AND student_ref = ?').run(id, studentRef);
+}
+
+function setDailyComment(id, comment) {
+  db.prepare('UPDATE daily_records SET mentor_comment = ? WHERE id = ?').run(comment || null, id);
+}
+
+// ---------- Gambar rekod harian ----------
+function addRecordImage(recordId, img) {
+  db.prepare('INSERT INTO record_images (record_id, data, type) VALUES (?, ?, ?)').run(recordId, img.data, img.type);
+}
+
+const listRecordImages = (recordId) =>
+  db.prepare('SELECT id FROM record_images WHERE record_id = ? ORDER BY id').all(recordId).map((r) => r.id);
+
+const getRecordImage = (imageId) =>
+  db.prepare(
+    `SELECT i.data, i.type, i.record_id, r.student_ref
+       FROM record_images i JOIN daily_records r ON r.id = i.record_id WHERE i.id = ?`
+  ).get(imageId);
+
+function deleteRecordImage(imageId, studentRef) {
+  db.prepare(
+    `DELETE FROM record_images WHERE id = ?
+       AND record_id IN (SELECT id FROM daily_records WHERE student_ref = ?)`
+  ).run(imageId, studentRef);
+}
+
+// ---------- Ringkasan bulanan semua pelajar (mentor) ----------
+function monthOverview(month, className = '') {
+  return db
+    .prepare(
+      `SELECT s.id, s.student_id, s.name, s.class_name,
+              p.capital, p.base_pct, p.risk_tolerance_pct,
+              COUNT(r.id)                     AS days,
+              COALESCE(SUM(r.profit - r.loss), 0) AS pnl,
+              COALESCE(SUM(r.total_trades), 0) AS trades,
+              COALESCE(SUM(r.wins), 0)        AS wins,
+              COALESCE(SUM(r.losses), 0)      AS losses,
+              COALESCE(SUM(r.profit), 0)      AS profit,
+              COALESCE(SUM(r.loss), 0)        AS loss,
+              (SELECT MAX(record_date) FROM daily_records d WHERE d.student_ref = s.id) AS last_record,
+              (SELECT COUNT(*) FROM reports x WHERE x.student_id = s.student_id) AS report_count
+         FROM students s
+         LEFT JOIN plans p ON p.student_ref = s.id AND p.month = ?
+         LEFT JOIN daily_records r ON r.student_ref = s.id AND r.record_date LIKE ?
+        WHERE (? = '' OR s.class_name = ?)
+        GROUP BY s.id
+        ORDER BY s.class_name, s.name`
+    )
+    .all(month, `${month}-%`, className, className);
+}
+
+// ---------- Tetapan program ----------
+const getSetting = (key, fallback = '') => {
+  const r = db.prepare('SELECT value FROM settings WHERE key = ?').get(key);
+  return r && r.value != null ? r.value : fallback;
+};
+
+function setSetting(key, value) {
+  db.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value')
+    .run(key, value);
+}
+
 module.exports = {
+  getPlan, getPreviousPlan, savePlan,
+  createDaily, updateDaily, getDaily, getDailyByDate, listDailyForMonth, listDailyAll, listRecordMonths,
+  deleteDaily, setDailyComment,
+  addRecordImage, listRecordImages, getRecordImage, deleteRecordImage,
+  monthOverview, getSetting, setSetting,
   createStudent, getStudentByStudentId, getStudent, setStudentPassword, listStudents, listStudentClasses,
   createTrade, updateTrade, listTrades, listAllTrades, getTrade, getTradeScreenshot, deleteTrade,
   setMentorComment, distinctTradeValues,

@@ -37,13 +37,13 @@ app.get('/', (req, res) => {
   if (req.session?.role === 'mentor') return res.redirect('/guru');
   guestPage(res, 'Selamat Datang', `
     <section class="hero card">
-      <h1>Trading Journal &amp; Laporan Trading</h1>
-      <p>Rekod setiap trade, lihat statistik prestasi anda secara automatik, dan hantar laporan trading kepada mentor.</p>
+      <h1>Rekod Trading &amp; Progress Pelajar</h1>
+      <p>Tetapkan pelan bulanan, rekod keputusan harian beserta screenshot, dan pantau progress Par 1 / Par 2 anda. Mentor boleh melihat dan memberi komen.</p>
       <p><a class="button" href="/masuk">Log Masuk Pelajar</a> <a class="button secondary" href="/daftar">Daftar Akaun</a></p>
     </section>
     <div class="grid3">
-      <div class="card"><h3>📒 Journal</h3><p class="muted">Pair, entry, SL, TP, exit, lot, P/L, strategi, emosi, pengajaran dan screenshot chart.</p></div>
-      <div class="card"><h3>📊 Statistik</h3><p class="muted">Win rate, profit factor, purata R, drawdown, graf ekuiti, prestasi ikut pair dan strategi.</p></div>
+      <div class="card"><h3>🎯 Pelan Bulanan</h3><p class="muted">Modal, USD per pip dan base %. Sasaran Par 1 / Par 2 bulanan, mingguan, harian dan pips dikira automatik.</p></div>
+      <div class="card"><h3>📅 Rekod Harian</h3><p class="muted">Setup, lot, trade, win/loss, profit/loss dan screenshot. Modal, % mingguan, % bulanan dan equity curve dikira automatik.</p></div>
       <div class="card"><h3>📝 Laporan</h3><p class="muted">Hantar laporan trading (PDF, Word, Excel) dan terima markah serta komen mentor.</p></div>
     </div>`);
 });

@@ -5,6 +5,8 @@ const { computeStats } = require('../lib/stats');
 const v = require('../lib/views');
 const f = require('../lib/forms');
 const { sendCsv, TRADE_HEADER, tradeRow } = require('../lib/csv');
+const mo = require('../lib/monthly');
+const mv = require('../lib/monthly-view');
 
 const router = express.Router();
 const BASE = '/pelajar';
@@ -23,18 +25,161 @@ const ownTrade = (req) => {
 };
 const notFound = (res) => render(res, 'Tidak Dijumpai', '<p>Trade tidak dijumpai.</p>', 404);
 
+// ---------- Dashboard bulanan (Pelan + Rekod Harian) ----------
+const monthOf = (req) => (mo.isMonth(req.query.bulan) ? req.query.bulan : mo.thisMonth());
+
 router.get('/', (req, res) => {
-  const trades = db.listTrades(req.student.id);
-  const s = computeStats(trades);
+  const month = monthOf(req);
+  const s = mo.summarize(db.getPlan(req.student.id, month), db.listDailyForMonth(req.student.id, month));
+  const todayDone = db.getDailyByDate(req.student.id, mo.today());
   render(res, 'Dashboard', `
     <div class="head-row"><div><h1>Assalamualaikum, ${v.esc(req.student.name)}</h1>
       <p class="muted">${v.esc(req.student.student_id)} · ${v.esc(req.student.class_name)}</p></div>
-      <a class="button" href="${BASE}/trade/baru">+ Rekod Trade</a></div>
-    ${trades.length ? v.statsSection(s) : `<div class="card center"><h2>Journal anda masih kosong</h2>
-      <p>Mula rekod trade pertama anda untuk melihat statistik prestasi.</p>
-      <p><a class="button" href="${BASE}/trade/baru">+ Rekod Trade Pertama</a></p></div>`}
-    ${trades.length ? `<h2>Trade Terkini</h2>${v.tradeTable(trades.slice(0, 10), BASE)}
-      <p><a href="${BASE}/journal">Lihat semua trade →</a></p>` : ''}`);
+      ${todayDone ? `<a class="button secondary" href="${BASE}/harian/${todayDone.id}">✓ Rekod hari ini sudah diisi</a>`
+        : `<a class="button" href="${BASE}/harian/baru">+ Rekod Hari Ini</a>`}</div>
+    ${mv.renderMonth({ s, month, base: BASE, canEdit: true, rules: db.getSetting('rules', mo.DEFAULT_RULES) })}`);
+});
+
+// ---------- Pelan bulanan ----------
+router.get('/pelan', (req, res) => {
+  const month = monthOf(req);
+  let values = db.getPlan(req.student.id, month);
+  let note = '';
+  if (!values) {
+    const prev = db.getPreviousPlan(req.student.id, month);
+    if (prev) {
+      // Modal bulan baru = modal akhir bulan sebelumnya.
+      const end = mo.summarize(prev, db.listDailyForMonth(req.student.id, prev.month)).month.endCapital;
+      values = { ...prev, capital: +end.toFixed(2) };
+      note = `Diisi daripada pelan ${mo.monthLabel(prev.month)}, dengan modal akhir bulan itu. Semak dan simpan.`;
+    } else {
+      values = mo.DEFAULT_PLAN;
+      note = 'Nilai contoh diisi mengikut templat Strategic Trading Implementation. Ubah ikut akaun anda.';
+    }
+  }
+  render(res, 'Pelan Bulanan', `
+    <p><a href="${BASE}?bulan=${month}">← Dashboard</a></p>
+    <h1>Pelan Strategi Bulanan</h1>
+    ${mv.monthNav(BASE, month, '/pelan')}
+    ${note ? v.alert(note, 'info') : ''}
+    ${mv.planForm({ action: `${BASE}/pelan`, values, month })}`);
+});
+
+router.post('/pelan', (req, res) => {
+  const month = mo.isMonth(req.body.month) ? req.body.month : mo.thisMonth();
+  const { plan, error } = f.parsePlan(req.body);
+  if (error) {
+    return render(res, 'Pelan Bulanan', `<h1>Pelan Strategi Bulanan</h1>${mv.monthNav(BASE, month, '/pelan')}
+      ${mv.planForm({ action: `${BASE}/pelan`, values: req.body, error, month })}`, 400);
+  }
+  db.savePlan(req.student.id, month, plan);
+  res.redirect(`${BASE}?bulan=${month}`);
+});
+
+// ---------- Rekod harian ----------
+const IMG = `${BASE}/harian/gambar`;
+const ownDaily = (req) => {
+  const d = db.getDaily(Number(req.params.id));
+  return d && d.student_ref === req.student.id ? d : null;
+};
+const dailyNotFound = (res) => render(res, 'Tidak Dijumpai', '<p>Rekod tidak dijumpai.</p>', 404);
+
+router.get('/harian/baru', (req, res) => {
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.tarikh || '')) ? req.query.tarikh : mo.today();
+  const existing = db.getDailyByDate(req.student.id, date);
+  if (existing) return res.redirect(`${BASE}/harian/${existing.id}/edit`);
+  const plan = db.getPlan(req.student.id, date.slice(0, 7));
+  render(res, 'Rekod Harian', `<h1>Rekod Harian</h1>
+    ${plan ? '' : v.alert(`Anda belum ada pelan untuk ${mo.monthLabel(date.slice(0, 7))}. Rekod tetap boleh disimpan, tetapi modal dan sasaran Par hanya dikira selepas pelan ditetapkan.`, 'info')}
+    ${mv.dailyForm({ action: `${BASE}/harian/baru`, values: { record_date: date, lot_size: plan ? plan.lot_size : '' } })}`);
+});
+
+router.post('/harian/baru', async (req, res) => {
+  const uploadErr = await f.uploadScreenshots(req, res);
+  const { daily, error } = f.parseDaily(req.body || {});
+  let err = uploadErr || error;
+  if (!err && db.getDailyByDate(req.student.id, daily.record_date)) {
+    err = `Rekod untuk ${daily.record_date} sudah ada. Buka rekod itu untuk mengubahnya.`;
+  }
+  if (err) return render(res, 'Rekod Harian', `<h1>Rekod Harian</h1>${mv.dailyForm({ action: `${BASE}/harian/baru`, values: req.body || {}, error: err })}`, 400);
+  const id = db.createDaily(req.student.id, daily);
+  f.imagesFromFiles(req.files).forEach((img) => db.addRecordImage(id, img));
+  res.redirect(`${BASE}?bulan=${daily.record_date.slice(0, 7)}`);
+});
+
+router.get('/harian/gambar/:imgId', (req, res) => {
+  const img = db.getRecordImage(Number(req.params.imgId));
+  if (!img || img.student_ref !== req.student.id) return res.status(404).send('Tidak dijumpai');
+  res.setHeader('Content-Type', img.type);
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Cache-Control', 'private, max-age=86400');
+  res.send(Buffer.from(img.data));
+});
+
+router.get('/harian/:id', (req, res) => {
+  const d = ownDaily(req);
+  if (!d) return dailyNotFound(res);
+  render(res, `Rekod ${d.record_date}`, `
+    <p><a href="${BASE}?bulan=${d.record_date.slice(0, 7)}">← Dashboard ${mo.monthLabel(d.record_date.slice(0, 7))}</a></p>
+    <div class="head-row"><h1>Rekod Harian · ${v.esc(d.record_date)}</h1>
+      <a class="button secondary" href="${BASE}/harian/${d.id}/edit">Edit</a></div>
+    ${d.mentor_comment ? `<div class="alert info"><strong>Komen Mentor:</strong> ${v.esc(d.mentor_comment)}</div>` : ''}
+    ${mv.dailyDetail(d, db.listRecordImages(d.id), IMG)}
+    <form method="post" action="${BASE}/harian/${d.id}/padam" onsubmit="return confirm('Padam rekod hari ini secara kekal?')">
+      <button class="danger">Padam Rekod</button></form>`);
+});
+
+router.get('/harian/:id/edit', (req, res) => {
+  const d = ownDaily(req);
+  if (!d) return dailyNotFound(res);
+  render(res, 'Edit Rekod', `<h1>Edit Rekod Harian</h1>
+    ${mv.dailyForm({ action: `${BASE}/harian/${d.id}/edit`, values: d, editing: true, images: db.listRecordImages(d.id), imgBase: IMG })}`);
+});
+
+router.post('/harian/:id/edit', async (req, res) => {
+  const d = ownDaily(req);
+  if (!d) return dailyNotFound(res);
+  const uploadErr = await f.uploadScreenshots(req, res);
+  const { daily, error } = f.parseDaily(req.body || {});
+  let err = uploadErr || error;
+  const clash = !err && db.getDailyByDate(req.student.id, daily.record_date);
+  if (clash && clash.id !== d.id) err = `Rekod untuk ${daily.record_date} sudah ada.`;
+  const removeIds = [].concat(req.body?.remove_images || []).map(Number);
+  const keep = db.listRecordImages(d.id).filter((id) => !removeIds.includes(id)).length;
+  if (!err && keep + (req.files || []).length > f.MAX_DAILY_IMAGES) err = `Maksimum ${f.MAX_DAILY_IMAGES} screenshot bagi setiap hari.`;
+  if (err) {
+    return render(res, 'Edit Rekod', `<h1>Edit Rekod Harian</h1>
+      ${mv.dailyForm({ action: `${BASE}/harian/${d.id}/edit`, values: req.body || {}, error: err, editing: true, images: db.listRecordImages(d.id), imgBase: IMG })}`, 400);
+  }
+  db.updateDaily(d.id, req.student.id, daily);
+  removeIds.forEach((id) => db.deleteRecordImage(id, req.student.id));
+  f.imagesFromFiles(req.files).forEach((img) => db.addRecordImage(d.id, img));
+  res.redirect(`${BASE}/harian/${d.id}`);
+});
+
+router.post('/harian/:id/padam', (req, res) => {
+  const d = ownDaily(req);
+  if (!d) return dailyNotFound(res);
+  db.deleteDaily(d.id, req.student.id);
+  res.redirect(`${BASE}?bulan=${d.record_date.slice(0, 7)}`);
+});
+
+router.get('/harian-eksport.csv', (req, res) => {
+  const rows = [];
+  const byMonth = new Map();
+  for (const r of db.listDailyAll(req.student.id)) {
+    const k = r.record_date.slice(0, 7);
+    if (!byMonth.has(k)) byMonth.set(k, []);
+    byMonth.get(k).push(r);
+  }
+  for (const [month, recs] of byMonth) {
+    for (const d of mo.summarize(db.getPlan(req.student.id, month), recs).days) {
+      rows.push([d.record_date, d.day, `Minggu ${d.week}`, d.setup, d.lot_size, d.total_trades, d.wins, d.losses, d.profit, -d.loss, d.pnl,
+        d.pct == null ? '' : (d.pct * 100).toFixed(2), d.capitalAfter, d.notes, d.mentor_comment]);
+    }
+  }
+  sendCsv(res, `rekod-harian-${req.student.student_id}.csv`,
+    ['Tarikh', 'Hari', 'Minggu', 'Setup', 'Lot', 'Trade', 'Win', 'Loss', 'Profit', 'Loss (USD)', 'P/L', '% Modal', 'Modal', 'Catatan', 'Komen Mentor'], rows);
 });
 
 router.get('/journal', (req, res) => {
@@ -45,7 +190,7 @@ router.get('/journal', (req, res) => {
   const trades = db.listTrades(req.student.id, q);
   const opts = (list, cur) => list.map((o) => `<option ${o === cur ? 'selected' : ''}>${v.esc(o)}</option>`).join('');
   render(res, 'Journal', `
-    <div class="head-row"><h1>Trading Journal <span class="muted">(${trades.length})</span></h1>
+    <div class="head-row"><h1>Journal Trade <span class="muted">(${trades.length})</span></h1>
       <div><a class="button" href="${BASE}/trade/baru">+ Rekod Trade</a> <a class="button secondary" href="${BASE}/eksport.csv">Eksport CSV</a></div></div>
     <form method="get" class="card row">
       <select name="pair"><option value="">Semua pair</option>${opts(db.distinctTradeValues(req.student.id, 'symbol'), q.symbol)}</select>
@@ -54,7 +199,7 @@ router.get('/journal', (req, res) => {
       <label class="inline-label">Hingga <input type="date" name="hingga" value="${v.esc(q.to)}"></label>
       <button>Tapis</button>
     </form>
-    ${trades.length && (q.symbol || q.strategy || q.from || q.to) ? v.statsSection(computeStats(trades)) : ''}
+    ${trades.length ? v.statsSection(computeStats(trades)) : '<p class="muted">Journal trade ialah pilihan tambahan untuk merekod setiap trade secara terperinci (entry, SL, TP, emosi). Rekod utama ialah Rekod Harian di Dashboard.</p>'}
     ${v.tradeTable(trades, BASE)}`);
 });
 

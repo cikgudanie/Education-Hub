@@ -5,23 +5,25 @@ Sistem web untuk pelajar trading merekod **trading journal** dan menghantar **la
 ## Ciri-ciri
 
 ### Pelajar (daftar di `/daftar`, log masuk di `/masuk`)
-- **Trading journal**: rekod setiap trade, termasuk tarikh, pair, BUY/SELL, timeframe, entry, stop loss, take profit, exit, lot, P/L, strategi, emosi, analisis, pengajaran dan screenshot chart
-- **Dashboard statistik** (dikira automatik):
-  - Jumlah P/L, win rate, profit factor dan purata R-multiple
-  - Purata untung/rugi, trade terbaik/terburuk, max drawdown, dan rentetan untung/rugi
-  - Graf lengkung ekuiti (P/L terkumpul) yang interaktif
-  - Prestasi mengikut pair, strategi dan emosi
-- Tapis journal mengikut pair, strategi dan julat tarikh
-- Edit atau padam trade, dan eksport journal ke CSV
-- **Hantar laporan trading** (PDF, Word, Excel, gambar, ZIP), dan lihat status, markah serta komen mentor
+- **Pelan Strategi Bulanan**, ikut templat *Strategic Trading Implementation*:
+  - Input: modal, USD per pip, lot size, base %, risiko setiap trade, dan toleransi risiko
+  - Sasaran **Par 1** (base %) dan **Par 2** (2×) dikira secara bulanan, mingguan dan harian, dalam USD dan pips, termasuk unjuran 10X dan 10X2 Income
+  - Bulan baru diisi automatik dengan modal akhir bulan sebelumnya
+- **Rekod Harian**, ikut templat *RMI*:
+  - Setup (LP1/LP2/No LP), lot, jumlah trade, win, loss, profit, loss, catatan, dan sehingga 6 screenshot sehari
+  - Modal berjalan, P/L, % modal, dan status sasaran harian (✓ Par 1 / ✓✓ Par 2 / ✗ Rugi)
+  - Jumlah mingguan, % mingguan, % bulanan dan Profit Loss Ratio
+- **Dashboard bulanan**: modal semasa, P/L bulan, progress Par 1/Par 2, win rate, P/L ratio, max drawdown, equity curve, serta Peraturan & Mindset program
+- **Journal Trade** (pilihan): rekod setiap trade secara terperinci, dengan statistik win rate, profit factor dan R-multiple
+- **Laporan**: hantar fail laporan dan terima markah serta komen mentor
 
-### Mentor (`/guru`, kata laluan mentor)
-- Senarai semua pelajar dengan ringkasan prestasi (bilangan trade, win rate, jumlah P/L)
-- Lihat journal dan statistik penuh setiap pelajar
-- Beri komen pada setiap trade (pelajar akan nampak komen ini)
-- Semak laporan: status, markah, komen, muat turun dan padam
-- Tetapkan semula kata laluan pelajar yang terlupa
-- Eksport semua trade dan laporan ke CSV (boleh dibuka dalam Excel)
+### Mentor (`/guru`)
+- Ringkasan bulanan semua pelajar: modal, P/L, %, status Par 1, amaran risiko, win rate, P/L ratio, dan **siapa yang belum kemas kini rekod** (3 hari atau lebih)
+- Dashboard bulanan setiap pelajar (sama seperti yang pelajar lihat), termasuk screenshot
+- Komen pada setiap rekod harian dan setiap trade
+- Semak laporan (status, markah, komen), dan tetapkan semula kata laluan pelajar
+- **Tetapan**: nama program, serta teks Peraturan & Mindset yang dipaparkan kepada semua pelajar
+- Eksport rekod harian dan journal ke CSV
 
 ## Cara Menjalankan
 
