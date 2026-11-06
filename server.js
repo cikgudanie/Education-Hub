@@ -7,9 +7,12 @@ const v = require('./lib/views');
 const { text } = require('./lib/forms');
 
 const PORT = Number(process.env.PORT) || 3000;
+const HOST = process.env.HOST || '0.0.0.0';
 
 const app = express();
 app.disable('x-powered-by');
+// Di belakang reverse proxy (cth: Caddy), ambil IP sebenar pengguna daripada proxy tempatan sahaja.
+if (process.env.TRUST_PROXY) app.set('trust proxy', 'loopback');
 app.use(express.urlencoded({ extended: false, limit: '100kb' }));
 app.use('/static', express.static(path.join(__dirname, 'public')));
 app.use(auth.sessionMiddleware);
@@ -137,4 +140,4 @@ app.use((err, req, res, next) => {
   res.status(500).send(v.page('Ralat', '<h1>Ralat</h1><p>Berlaku ralat pada pelayan. Sila cuba lagi.</p>'));
 });
 
-app.listen(PORT, () => console.log(`Education Hub berjalan di http://localhost:${PORT}`));
+app.listen(PORT, HOST, () => console.log(`Education Hub berjalan di http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`));

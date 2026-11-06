@@ -34,6 +34,10 @@ ADMIN_PASSWORD=katalaluanmentor npm start
 
 Buka http://localhost:3000
 
+## Pasang di Windows VPS (percuma dengan DuckDNS)
+
+Lihat [deploy/windows/PANDUAN-WINDOWS.md](deploy/windows/PANDUAN-WINDOWS.md). Satu skrip memasang semuanya: Node.js, HTTPS automatik (Caddy), auto-mula selepas restart, dan backup harian.
+
 ## Tetapan (pembolehubah persekitaran)
 
 | Nama             | Lalai      | Keterangan                                              |
@@ -43,6 +47,9 @@ Buka http://localhost:3000
 | `PORT`           | `3000`     | Port pelayan                                            |
 | `DATA_DIR`       | `./data`   | Lokasi fail database `reports.db`                       |
 | `CURRENCY`       | `USD`      | Mata wang yang dipaparkan untuk P/L                     |
+| `HOST`           | `0.0.0.0`  | Alamat dengar. Guna `127.0.0.1` di belakang reverse proxy |
+| `TRUST_PROXY`    | –          | Tetapkan `1` jika di belakang reverse proxy tempatan (cth: Caddy) |
+| `COOKIE_SECURE`  | –          | Tetapkan `1` apabila laman guna HTTPS                   |
 | `MAX_FILE_MB`    | `10`       | Saiz maksimum fail laporan (MB). Had screenshot ialah 5 MB |
 
 ## Nota
