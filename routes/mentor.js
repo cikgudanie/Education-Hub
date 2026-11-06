@@ -24,6 +24,19 @@ router.get('/', (req, res) => {
   const rows = db.monthOverview(month, className);
   const classes = db.listStudentClasses();
   const today = mo.today();
+  // P/L setiap minggu (W1-W5) bagi setiap pelajar.
+  const weeks = mo.monthWeeks(month);
+  const weekPnl = new Map();
+  for (const r of db.listDailyForMonthAll(month)) {
+    const key = `${r.student_ref}:${mo.weekOfMonth(r.record_date)}`;
+    weekPnl.set(key, (weekPnl.get(key) || 0) + r.profit - r.loss);
+  }
+  const weekCell = (st, w) => {
+    const v = weekPnl.get(`${st.id}:${w.week}`);
+    if (v == null) return `<td class="wk muted">${w.start > today ? '' : '·'}</td>`;
+    const val = st.capital ? mv.pct(v / st.capital, 1) : v.toFixed(2);
+    return `<td class="wk"><span class="${v > 0 ? 'pos' : v < 0 ? 'neg' : ''}">${val}</span></td>`;
+  };
   const daysAgo = (d) => (d ? Math.round((Date.parse(today) - Date.parse(d)) / 86400000) : null);
   const q = className ? `&kelas=${encodeURIComponent(className)}` : '';
   render(res, 'Pelajar', `
@@ -37,9 +50,9 @@ router.get('/', (req, res) => {
     </form>
     ${mv.monthNav(BASE, month).replace(/\?bulan=([0-9-]+)/g, `?bulan=$1${q.replace(/&/g, '&amp;')}`)}
     ${rows.length === 0 ? '<p class="muted">Belum ada pelajar mendaftar. Minta pelajar daftar di halaman <strong>/daftar</strong>.</p>' : `
-    <div class="scroll"><table>
-      <thead><tr><th>Nama</th><th>Kelas</th><th class="num">Modal Awal</th><th class="num">P/L Bulan</th><th class="num">% Bulan</th>
-        <th>Par 1</th><th class="num">Hari</th><th class="num">Win Rate</th><th class="num">P/L Ratio</th><th>Rekod Terakhir</th><th class="num">Laporan</th><th></th></tr></thead>
+    <div class="scroll"><table class="compact">
+      <thead><tr><th>Pelajar</th><th class="num">Modal Awal</th><th class="num">P/L Bulan</th>
+        <th>Par 1</th>${weeks.map((w) => `<th class="wk" title="${w.label}">W${w.week}</th>`).join('')}<th class="num">Hari</th><th class="num">Win Rate</th><th class="num">P/L Ratio</th><th>Rekod Terakhir</th><th></th></tr></thead>
       <tbody>${rows.map((s) => {
         const pct = s.capital ? s.pnl / s.capital : null;
         const par1 = s.capital ? s.capital * s.base_pct : null;
@@ -47,24 +60,24 @@ router.get('/', (req, res) => {
         const ago = daysAgo(s.last_record);
         const over = s.capital && s.risk_tolerance_pct != null && -s.pnl >= s.capital * s.risk_tolerance_pct;
         return `<tr>
-          <td><strong>${v.esc(s.name)}</strong><br><span class="muted">${v.esc(s.student_id)}</span></td><td>${v.esc(s.class_name)}</td>
+          <td><strong>${v.esc(s.name)}</strong><br><span class="muted">${v.esc(s.student_id)} · ${v.esc(s.class_name)}</span></td>
           <td class="num">${s.capital ? mv.money(s.capital) : '<span class="badge">Tiada pelan</span>'}</td>
-          <td class="num">${s.days ? v.pnl(s.pnl) : '–'}</td><td class="num">${s.days ? mv.pct(pct) : '–'}</td>
-          <td>${par1 == null ? '–' : s.pnl >= par1 ? '<span class="badge badge-untung">✓ Capai</span>' : `<span class="muted">Baki ${mv.money(par1 - s.pnl)}</span>`}${over ? ' <span class="badge badge-rugi">⚠ Risiko</span>' : ''}</td>
+          <td class="num">${s.days ? `${v.pnl(s.pnl)}<br><span class="muted">${mv.pct(pct)}</span>` : '–'}</td>
+          <td>${par1 == null ? '–' : s.pnl >= par1 ? '<span class="badge badge-untung">✓ Capai</span>' : `<span class="muted nowrap">Baki ${mv.money(par1 - s.pnl)}</span>`}${over ? '<br><span class="badge badge-rugi">⚠ Risiko</span>' : ''}</td>
+          ${weeks.map((w) => weekCell(s, w)).join('')}
           <td class="num">${s.days}</td><td class="num">${wr == null ? '–' : wr.toFixed(1) + '%'}</td>
           <td class="num">${s.loss ? v.fmtNum(s.profit / s.loss) : '–'}</td>
-          <td class="nowrap">${s.last_record ? `${v.esc(s.last_record)}${ago >= 3 ? ` <span class="badge badge-rugi">${ago} hari lalu</span>` : ''}` : '<span class="badge">Belum mula</span>'}</td>
-          <td class="num">${s.report_count}</td>
-          <td><a href="${BASE}/pelajar/${s.id}?bulan=${month}">Lihat</a></td></tr>`;
+          <td class="nowrap">${s.last_record ? `${v.esc(s.last_record)}${ago >= 3 ? `<br><span class="badge badge-rugi">${ago} hari lalu</span>` : ''}` : '<span class="badge">Belum mula</span>'}</td>
+          <td class="nowrap"><a href="${BASE}/pelajar/${s.id}?bulan=${month}">Lihat</a>${s.report_count ? `<br><span class="muted">${s.report_count} laporan</span>` : ''}</td></tr>`;
       }).join('')}</tbody></table></div>
-    <p class="muted">Lencana merah "hari lalu" menandakan pelajar yang tidak mengemas kini rekod selama 3 hari atau lebih.</p>`}`);
+    <p class="muted">W1–W${weeks.length}: P/L setiap minggu sebagai % modal (${weeks.map((w) => `W${w.week} ${w.label}`).join(', ')}). Titik (·) bermaksud tiada rekod minggu itu. Lencana merah "hari lalu" menandakan pelajar yang tidak mengemas kini rekod selama 3 hari atau lebih.</p>`}`);
 });
 
 router.get('/pelajar/:id', (req, res) => {
   const st = db.getStudent(Number(req.params.id));
   if (!st) return notFound(res, 'Pelajar');
   const month = monthOf(req);
-  const s = mo.summarize(db.getPlan(st.id, month), db.listDailyForMonth(st.id, month));
+  const s = mo.summarize(db.getPlan(st.id, month), db.listDailyForMonth(st.id, month), month);
   const trades = db.listTrades(st.id);
   const reports = db.listReportsByStudentId(st.student_id);
   render(res, st.name, `

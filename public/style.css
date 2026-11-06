@@ -146,3 +146,20 @@ table.rmi tr.total td { font-weight: 700; background: var(--bg); }
 .thumb span { display: flex; gap: 6px; align-items: center; font-size: .85rem; }
 .thumb input { width: auto; }
 .gallery a { display: block; }
+
+/* Prestasi mingguan W1-W5 */
+.weekly tr.future td { color: var(--text-2); }
+.wprog { display: flex; align-items: center; gap: 8px; min-width: 130px; }
+.wbar { flex: 1; height: 8px; border-radius: 999px; background: var(--grid); overflow: hidden; }
+.wbar-fill { display: block; height: 100%; border-radius: 999px; background: var(--primary); }
+.wbar-fill.done { background: var(--pos); }
+.wbar-num { font-size: .8rem; color: var(--text-2); font-variant-numeric: tabular-nums; min-width: 38px; text-align: right; }
+.week-jump { display: flex; gap: 8px; flex-wrap: wrap; margin: 4px 0 8px; }
+.week-jump a, .week-jump span { font-weight: 600; font-size: .9rem; padding: 4px 14px; border-radius: 999px; border: 1px solid var(--line); text-decoration: none; }
+.week-jump a { color: var(--primary); border-color: var(--primary); }
+.week-jump a:hover { background: var(--info-bg); }
+.week-jump span { color: var(--text-2); opacity: .6; }
+.week-title { scroll-margin-top: 12px; }
+th.wk, td.wk { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.small { font-size: .82rem; }
+table.compact th, table.compact td { padding: 8px 7px; font-size: .88rem; }

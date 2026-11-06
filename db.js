@@ -400,6 +400,10 @@ function monthOverview(month, className = '') {
     .all(month, `${month}-%`, className, className);
 }
 
+// Rekod ringkas semua pelajar bagi satu bulan (untuk lajur W1-W5 mentor).
+const listDailyForMonthAll = (month) =>
+  db.prepare('SELECT student_ref, record_date, profit, loss FROM daily_records WHERE record_date LIKE ?').all(`${month}-%`);
+
 // ---------- Tetapan program ----------
 const getSetting = (key, fallback = '') => {
   const r = db.prepare('SELECT value FROM settings WHERE key = ?').get(key);
@@ -416,7 +420,7 @@ module.exports = {
   createDaily, updateDaily, getDaily, getDailyByDate, listDailyForMonth, listDailyAll, listRecordMonths,
   deleteDaily, setDailyComment,
   addRecordImage, listRecordImages, getRecordImage, deleteRecordImage,
-  monthOverview, getSetting, setSetting,
+  monthOverview, listDailyForMonthAll, getSetting, setSetting,
   createStudent, getStudentByStudentId, getStudent, setStudentPassword, listStudents, listStudentClasses,
   createTrade, updateTrade, listTrades, listAllTrades, getTrade, getTradeScreenshot, deleteTrade,
   setMentorComment, distinctTradeValues,

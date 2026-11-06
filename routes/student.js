@@ -30,7 +30,7 @@ const monthOf = (req) => (mo.isMonth(req.query.bulan) ? req.query.bulan : mo.thi
 
 router.get('/', (req, res) => {
   const month = monthOf(req);
-  const s = mo.summarize(db.getPlan(req.student.id, month), db.listDailyForMonth(req.student.id, month));
+  const s = mo.summarize(db.getPlan(req.student.id, month), db.listDailyForMonth(req.student.id, month), month);
   const todayDone = db.getDailyByDate(req.student.id, mo.today());
   render(res, 'Dashboard', `
     <div class="head-row"><div><h1>Assalamualaikum, ${v.esc(req.student.name)}</h1>
